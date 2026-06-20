@@ -87,7 +87,15 @@ dependencies {
     implementation(libs.datastore.preferences)
     implementation(libs.serialization.json)
     implementation(libs.coroutines.android)
+    annotationProcessor(libs.kotlin.metadata.jvm)
     ksp(libs.hilt.compiler)
     ksp(libs.room.compiler)
+    ksp(libs.kotlin.metadata.jvm)
     debugImplementation(libs.compose.ui.tooling)
+}
+
+configurations.configureEach {
+    resolutionStrategy.force(
+        "org.jetbrains.kotlin:kotlin-metadata-jvm:${libs.versions.kotlinMetadata.get()}",
+    )
 }

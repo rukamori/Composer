@@ -1,6 +1,7 @@
 [versions]
 agp = "9.2.1"
 kotlin = "2.4.0"
+kotlinMetadata = "2.4.0"
 ksp = "2.3.9"
 compose = "1.12.0-alpha03"
 activity = "1.13.0"
@@ -39,6 +40,7 @@ room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlin-metadata-jvm = { module = "org.jetbrains.kotlin:kotlin-metadata-jvm", version.ref = "kotlinMetadata" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
