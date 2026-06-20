@@ -8,8 +8,11 @@ import java.io.File
 
 interface ProjectRepository {
     fun observeProjects(): Flow<List<ComposerProject>>
+
     suspend fun getProject(id: String): ComposerProject?
+
     suspend fun saveProject(project: ComposerProject)
+
     suspend fun deleteProject(id: String)
 }
 
@@ -19,12 +22,15 @@ interface AudioRepository {
 
 interface ExportRepository {
     suspend fun writeTtml(project: ComposerProject): File
+
     suspend fun writeProject(project: ComposerProject): File
 }
 
 interface SettingsRepository {
     val settings: Flow<ComposerSettings>
+
     suspend fun setSnapEnabled(enabled: Boolean)
+
     suspend fun setUseDynamicColor(enabled: Boolean)
 }
 

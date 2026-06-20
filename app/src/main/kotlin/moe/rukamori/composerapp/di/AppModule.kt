@@ -28,11 +28,12 @@ object DatabaseModule {
     fun provideDatabase(
         @ApplicationContext context: Context,
     ): ComposerDatabase =
-        Room.databaseBuilder(
-            context,
-            ComposerDatabase::class.java,
-            "composer.db",
-        ).build()
+        Room
+            .databaseBuilder(
+                context,
+                ComposerDatabase::class.java,
+                "composer.db",
+            ).build()
 
     @Provides
     fun provideProjectDao(database: ComposerDatabase): ProjectDao = database.projectDao()

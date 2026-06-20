@@ -40,16 +40,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun shareFile(effect: ComposerEffect.ShareFile) {
-        val uri = FileProvider.getUriForFile(
-            this,
-            "${BuildConfig.APPLICATION_ID}.fileprovider",
-            effect.file,
-        )
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = effect.mimeType
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
+        val uri =
+            FileProvider.getUriForFile(
+                this,
+                "${BuildConfig.APPLICATION_ID}.fileprovider",
+                effect.file,
+            )
+        val intent =
+            Intent(Intent.ACTION_SEND).apply {
+                type = effect.mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
         startActivity(Intent.createChooser(intent, getString(R.string.export)))
     }
 }

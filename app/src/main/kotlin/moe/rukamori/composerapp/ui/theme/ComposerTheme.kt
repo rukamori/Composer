@@ -25,23 +25,42 @@ fun ComposerTheme(
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
-    val colorScheme = remember(useDynamicColor, darkTheme) {
-        when {
-            useDynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-                if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-            darkTheme -> composerDarkColorScheme()
-            else -> composerLightColorScheme()
+    val colorScheme =
+        remember(useDynamicColor, darkTheme) {
+            when {
+                useDynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+                    if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+                }
+
+                darkTheme -> {
+                    composerDarkColorScheme()
+                }
+
+                else -> {
+                    composerLightColorScheme()
+                }
+            }
         }
-    }
-    val shapes = remember {
-        Shapes(
-            extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-            small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-            medium = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-            large = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-            extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
-        )
-    }
+    val shapes =
+        remember {
+            Shapes(
+                extraSmall =
+                    androidx.compose.foundation.shape
+                        .RoundedCornerShape(8.dp),
+                small =
+                    androidx.compose.foundation.shape
+                        .RoundedCornerShape(12.dp),
+                medium =
+                    androidx.compose.foundation.shape
+                        .RoundedCornerShape(16.dp),
+                large =
+                    androidx.compose.foundation.shape
+                        .RoundedCornerShape(24.dp),
+                extraLarge =
+                    androidx.compose.foundation.shape
+                        .RoundedCornerShape(32.dp),
+            )
+        }
     MaterialExpressiveTheme(
         colorScheme = colorScheme,
         motionScheme = MotionScheme.expressive(),

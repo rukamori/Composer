@@ -23,9 +23,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Article
-import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
@@ -34,6 +33,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -49,19 +49,19 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
@@ -104,6 +104,7 @@ import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
 import moe.rukamori.composerapp.R
 import moe.rukamori.composerapp.domain.model.LyricsFormat
+import moe.rukamori.composerapp.viewmodel.ComposerViewModel
 import moe.rukamori.composerapp.viewmodel.EditorScreenState
 import moe.rukamori.composerapp.viewmodel.EditorUiModel
 import moe.rukamori.composerapp.viewmodel.ExportScreenState
@@ -123,7 +124,6 @@ import moe.rukamori.composerapp.viewmodel.SyncUiModel
 import moe.rukamori.composerapp.viewmodel.TimelineScreenState
 import moe.rukamori.composerapp.viewmodel.TimelineUiModel
 import moe.rukamori.composerapp.viewmodel.WordUiModel
-import moe.rukamori.composerapp.viewmodel.ComposerViewModel
 import kotlin.math.max
 
 private val LocalOpenNavigationDrawer = staticCompositionLocalOf<(() -> Unit)?> { null }
@@ -336,22 +336,33 @@ private fun ProjectsScreen(
         },
     ) { padding ->
         when (state) {
-            ProjectsScreenState.Loading -> LoadingState(Modifier.padding(padding))
-            ProjectsScreenState.Empty -> EmptyState(
-                titleResId = R.string.empty_projects_title,
-                bodyResId = R.string.empty_projects_body,
-                actionResId = R.string.create_project,
-                onAction = onCreateProject,
-                modifier = Modifier.padding(padding),
-            )
-            is ProjectsScreenState.Error -> ErrorState(state.messageResId, modifier = Modifier.padding(padding))
-            is ProjectsScreenState.Success -> ProjectsContent(
-                model = state.model,
-                onOpenProject = onOpenProject,
-                onDuplicateProject = onDuplicateProject,
-                onRequestDeleteProject = onRequestDeleteProject,
-                modifier = Modifier.padding(padding),
-            )
+            ProjectsScreenState.Loading -> {
+                LoadingState(Modifier.padding(padding))
+            }
+
+            ProjectsScreenState.Empty -> {
+                EmptyState(
+                    titleResId = R.string.empty_projects_title,
+                    bodyResId = R.string.empty_projects_body,
+                    actionResId = R.string.create_project,
+                    onAction = onCreateProject,
+                    modifier = Modifier.padding(padding),
+                )
+            }
+
+            is ProjectsScreenState.Error -> {
+                ErrorState(state.messageResId, modifier = Modifier.padding(padding))
+            }
+
+            is ProjectsScreenState.Success -> {
+                ProjectsContent(
+                    model = state.model,
+                    onOpenProject = onOpenProject,
+                    onDuplicateProject = onDuplicateProject,
+                    onRequestDeleteProject = onRequestDeleteProject,
+                    modifier = Modifier.padding(padding),
+                )
+            }
         }
     }
     if (state is ProjectsScreenState.Success && state.model.pendingDeleteProjectId != null) {
@@ -411,16 +422,21 @@ private fun ProjectCard(
     onDelete: () -> Unit,
 ) {
     ElevatedCard(
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = if (isActive) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-        ),
+        colors =
+            CardDefaults.elevatedCardColors(
+                containerColor = if (isActive) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+            ),
     ) {
         ListItem(
             headlineContent = {
                 Text(project.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
             },
             supportingContent = {
-                Text("${project.lineCount} ${stringResource(R.string.lines)} · ${project.wordCount} ${stringResource(R.string.words)} · ${project.durationLabel}")
+                Text(
+                    "${project.lineCount} ${stringResource(
+                        R.string.lines,
+                    )} · ${project.wordCount} ${stringResource(R.string.words)} · ${project.durationLabel}",
+                )
             },
             leadingContent = {
                 Icon(Icons.Default.Article, contentDescription = null)
@@ -453,25 +469,37 @@ private fun ImportScreen(
     onImportLyrics: () -> Unit,
     onAudioSelected: (Uri) -> Unit,
 ) {
-    val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onAudioSelected(uri)
-    }
+    val audioLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) onAudioSelected(uri)
+        }
     ComposerScaffold(titleResId = R.string.import_title) { padding ->
         when (state) {
-            ImportScreenState.Loading -> LoadingState(Modifier.padding(padding))
-            ImportScreenState.Empty -> EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
-            is ImportScreenState.Error -> ErrorState(state.messageResId, modifier = Modifier.padding(padding))
-            is ImportScreenState.Success -> ImportContent(
-                model = state.model,
-                onTitleChange = onTitleChange,
-                onArtistChange = onArtistChange,
-                onAlbumChange = onAlbumChange,
-                onLyricsChange = onLyricsChange,
-                onFormatSelected = onFormatSelected,
-                onImportLyrics = onImportLyrics,
-                onSelectAudio = { audioLauncher.launch(arrayOf("audio/*")) },
-                modifier = Modifier.padding(padding),
-            )
+            ImportScreenState.Loading -> {
+                LoadingState(Modifier.padding(padding))
+            }
+
+            ImportScreenState.Empty -> {
+                EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
+            }
+
+            is ImportScreenState.Error -> {
+                ErrorState(state.messageResId, modifier = Modifier.padding(padding))
+            }
+
+            is ImportScreenState.Success -> {
+                ImportContent(
+                    model = state.model,
+                    onTitleChange = onTitleChange,
+                    onArtistChange = onArtistChange,
+                    onAlbumChange = onAlbumChange,
+                    onLyricsChange = onLyricsChange,
+                    onFormatSelected = onFormatSelected,
+                    onImportLyrics = onImportLyrics,
+                    onSelectAudio = { audioLauncher.launch(arrayOf("audio/*")) },
+                    modifier = Modifier.padding(padding),
+                )
+            }
         }
     }
 }
@@ -540,11 +568,12 @@ private fun ImportContent(
                             selected = model.selectedFormat == format,
                             onClick = { onFormatSelected(format) },
                             label = { Text(stringResource(format.titleResId())) },
-                            leadingIcon = if (model.selectedFormat == format) {
-                                { Icon(Icons.Default.Check, contentDescription = null) }
-                            } else {
-                                null
-                            },
+                            leadingIcon =
+                                if (model.selectedFormat == format) {
+                                    { Icon(Icons.Default.Check, contentDescription = null) }
+                                } else {
+                                    null
+                                },
                         )
                     }
                 }
@@ -593,20 +622,31 @@ private fun EditorScreen(
         },
     ) { padding ->
         when (state) {
-            EditorScreenState.Loading -> LoadingState(Modifier.padding(padding))
-            EditorScreenState.Empty -> EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
-            is EditorScreenState.Error -> ErrorState(state.messageResId, modifier = Modifier.padding(padding))
-            is EditorScreenState.Success -> EditorContent(
-                model = state.model,
-                onLineTextChange = onLineTextChange,
-                onWordSelected = onWordSelected,
-                onAgentSelected = onAgentSelected,
-                onToggleBackground = onToggleBackground,
-                onAddAgent = onAddAgent,
-                onSplitWord = onSplitWord,
-                onMergeWord = onMergeWord,
-                modifier = Modifier.padding(padding),
-            )
+            EditorScreenState.Loading -> {
+                LoadingState(Modifier.padding(padding))
+            }
+
+            EditorScreenState.Empty -> {
+                EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
+            }
+
+            is EditorScreenState.Error -> {
+                ErrorState(state.messageResId, modifier = Modifier.padding(padding))
+            }
+
+            is EditorScreenState.Success -> {
+                EditorContent(
+                    model = state.model,
+                    onLineTextChange = onLineTextChange,
+                    onWordSelected = onWordSelected,
+                    onAgentSelected = onAgentSelected,
+                    onToggleBackground = onToggleBackground,
+                    onAddAgent = onAddAgent,
+                    onSplitWord = onSplitWord,
+                    onMergeWord = onMergeWord,
+                    modifier = Modifier.padding(padding),
+                )
+            }
         }
     }
 }
@@ -747,20 +787,31 @@ private fun SyncScreen(
 ) {
     ComposerScaffold(titleResId = R.string.sync) { padding ->
         when (state) {
-            SyncScreenState.Loading -> LoadingState(Modifier.padding(padding))
-            SyncScreenState.Empty -> EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
-            is SyncScreenState.Error -> ErrorState(state.messageResId, modifier = Modifier.padding(padding))
-            is SyncScreenState.Success -> SyncContent(
-                model = state.model,
-                onPlayPause = onPlayPause,
-                onSeek = onSeek,
-                onTapWord = onTapWord,
-                onNudgeBack = onNudgeBack,
-                onNudgeForward = onNudgeForward,
-                onUndo = onUndo,
-                onRedo = onRedo,
-                modifier = Modifier.padding(padding),
-            )
+            SyncScreenState.Loading -> {
+                LoadingState(Modifier.padding(padding))
+            }
+
+            SyncScreenState.Empty -> {
+                EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
+            }
+
+            is SyncScreenState.Error -> {
+                ErrorState(state.messageResId, modifier = Modifier.padding(padding))
+            }
+
+            is SyncScreenState.Success -> {
+                SyncContent(
+                    model = state.model,
+                    onPlayPause = onPlayPause,
+                    onSeek = onSeek,
+                    onTapWord = onTapWord,
+                    onNudgeBack = onNudgeBack,
+                    onNudgeForward = onNudgeForward,
+                    onUndo = onUndo,
+                    onRedo = onRedo,
+                    modifier = Modifier.padding(padding),
+                )
+            }
         }
     }
 }
@@ -778,9 +829,10 @@ private fun SyncContent(
     modifier: Modifier,
 ) {
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(MdSpacing.sm),
+        modifier =
+            modifier
+                .fillMaxSize()
+                .padding(MdSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(MdSpacing.md),
     ) {
         MediaControls(model.isPlaying, model.playbackPositionMs, model.durationMs, onPlayPause, onSeek)
@@ -822,15 +874,26 @@ private fun TimelineScreen(
 ) {
     ComposerScaffold(titleResId = R.string.timeline) { padding ->
         when (state) {
-            TimelineScreenState.Loading -> LoadingState(Modifier.padding(padding))
-            TimelineScreenState.Empty -> EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
-            is TimelineScreenState.Error -> ErrorState(state.messageResId, modifier = Modifier.padding(padding))
-            is TimelineScreenState.Success -> TimelineContent(
-                model = state.model,
-                onWordSelected = onWordSelected,
-                onBoundsChange = onBoundsChange,
-                modifier = Modifier.padding(padding),
-            )
+            TimelineScreenState.Loading -> {
+                LoadingState(Modifier.padding(padding))
+            }
+
+            TimelineScreenState.Empty -> {
+                EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
+            }
+
+            is TimelineScreenState.Error -> {
+                ErrorState(state.messageResId, modifier = Modifier.padding(padding))
+            }
+
+            is TimelineScreenState.Success -> {
+                TimelineContent(
+                    model = state.model,
+                    onWordSelected = onWordSelected,
+                    onBoundsChange = onBoundsChange,
+                    modifier = Modifier.padding(padding),
+                )
+            }
         }
     }
 }
@@ -858,11 +921,13 @@ private fun TimelineContent(
             TimelineLine(line, onWordSelected)
         }
         item(contentType = "bounds") {
-            val selected = model.lines.asList()
-                .firstOrNull { it.id == model.selectedLineId }
-                ?.words
-                ?.asList()
-                ?.firstOrNull { it.id == model.selectedWordId }
+            val selected =
+                model.lines
+                    .asList()
+                    .firstOrNull { it.id == model.selectedLineId }
+                    ?.words
+                    ?.asList()
+                    ?.firstOrNull { it.id == model.selectedWordId }
             if (selected != null) {
                 SectionCard(titleResId = R.string.selected_word) {
                     Text(selected.text, style = MaterialTheme.typography.titleMedium)
@@ -915,15 +980,26 @@ private fun PreviewScreen(
 ) {
     ComposerScaffold(titleResId = R.string.preview) { padding ->
         when (state) {
-            PreviewScreenState.Loading -> LoadingState(Modifier.padding(padding))
-            PreviewScreenState.Empty -> EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
-            is PreviewScreenState.Error -> ErrorState(state.messageResId, modifier = Modifier.padding(padding))
-            is PreviewScreenState.Success -> PreviewContent(
-                model = state.model,
-                onPlayPause = onPlayPause,
-                onSeek = onSeek,
-                modifier = Modifier.padding(padding),
-            )
+            PreviewScreenState.Loading -> {
+                LoadingState(Modifier.padding(padding))
+            }
+
+            PreviewScreenState.Empty -> {
+                EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
+            }
+
+            is PreviewScreenState.Error -> {
+                ErrorState(state.messageResId, modifier = Modifier.padding(padding))
+            }
+
+            is PreviewScreenState.Success -> {
+                PreviewContent(
+                    model = state.model,
+                    onPlayPause = onPlayPause,
+                    onSeek = onSeek,
+                    modifier = Modifier.padding(padding),
+                )
+            }
         }
     }
 }
@@ -936,9 +1012,10 @@ private fun PreviewContent(
     modifier: Modifier,
 ) {
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(MdSpacing.sm),
+        modifier =
+            modifier
+                .fillMaxSize()
+                .padding(MdSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(MdSpacing.md),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -974,15 +1051,26 @@ private fun ExportScreen(
 ) {
     ComposerScaffold(titleResId = R.string.export) { padding ->
         when (state) {
-            ExportScreenState.Loading -> LoadingState(Modifier.padding(padding))
-            ExportScreenState.Empty -> EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
-            is ExportScreenState.Error -> ErrorState(state.messageResId, modifier = Modifier.padding(padding))
-            is ExportScreenState.Success -> ExportContent(
-                model = state.model,
-                onShareTtml = onShareTtml,
-                onShareProject = onShareProject,
-                modifier = Modifier.padding(padding),
-            )
+            ExportScreenState.Loading -> {
+                LoadingState(Modifier.padding(padding))
+            }
+
+            ExportScreenState.Empty -> {
+                EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
+            }
+
+            is ExportScreenState.Error -> {
+                ErrorState(state.messageResId, modifier = Modifier.padding(padding))
+            }
+
+            is ExportScreenState.Success -> {
+                ExportContent(
+                    model = state.model,
+                    onShareTtml = onShareTtml,
+                    onShareProject = onShareProject,
+                    modifier = Modifier.padding(padding),
+                )
+            }
         }
     }
 }
@@ -995,9 +1083,10 @@ private fun ExportContent(
     modifier: Modifier,
 ) {
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(MdSpacing.sm),
+        modifier =
+            modifier
+                .fillMaxSize()
+                .padding(MdSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(MdSpacing.sm),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(MdSpacing.xs)) {
@@ -1032,15 +1121,26 @@ private fun SettingsScreen(
 ) {
     ComposerScaffold(titleResId = R.string.settings) { padding ->
         when (state) {
-            SettingsScreenState.Loading -> LoadingState(Modifier.padding(padding))
-            SettingsScreenState.Empty -> EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
-            is SettingsScreenState.Error -> ErrorState(state.messageResId, modifier = Modifier.padding(padding))
-            is SettingsScreenState.Success -> SettingsContent(
-                model = state.model,
-                onSnapChanged = onSnapChanged,
-                onDynamicColorChanged = onDynamicColorChanged,
-                modifier = Modifier.padding(padding),
-            )
+            SettingsScreenState.Loading -> {
+                LoadingState(Modifier.padding(padding))
+            }
+
+            SettingsScreenState.Empty -> {
+                EmptyState(R.string.empty_editor_title, R.string.empty_editor_body, modifier = Modifier.padding(padding))
+            }
+
+            is SettingsScreenState.Error -> {
+                ErrorState(state.messageResId, modifier = Modifier.padding(padding))
+            }
+
+            is SettingsScreenState.Success -> {
+                SettingsContent(
+                    model = state.model,
+                    onSnapChanged = onSnapChanged,
+                    onDynamicColorChanged = onDynamicColorChanged,
+                    modifier = Modifier.padding(padding),
+                )
+            }
         }
     }
 }
@@ -1118,9 +1218,10 @@ private fun SectionCard(
 ) {
     OutlinedCard {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(MdSpacing.sm),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(MdSpacing.sm),
             verticalArrangement = Arrangement.spacedBy(MdSpacing.sm),
         ) {
             Text(stringResource(titleResId), style = MaterialTheme.typography.titleMedium)
@@ -1145,7 +1246,10 @@ private fun SummaryCard(
             if (artist.isNotBlank()) {
                 Text(artist, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
             }
-            Text("$lines ${stringResource(R.string.lines)} · $words ${stringResource(R.string.words)}", color = MaterialTheme.colorScheme.onSecondaryContainer)
+            Text(
+                "$lines ${stringResource(R.string.lines)} · $words ${stringResource(R.string.words)}",
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
         }
     }
 }
@@ -1206,9 +1310,10 @@ private fun WaveformCard(
         val color = MaterialTheme.colorScheme.primary
         val inactive = MaterialTheme.colorScheme.outline
         Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(96.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(96.dp),
         ) {
             val widthStep = size.width / max(1, peaks.size)
             peaks.forEachIndexed { index, peak ->
@@ -1246,9 +1351,10 @@ private fun EmptyState(
     onAction: (() -> Unit)? = null,
 ) {
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(MdSpacing.lg),
+        modifier =
+            modifier
+                .fillMaxSize()
+                .padding(MdSpacing.lg),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

@@ -16,17 +16,18 @@ data class ComposerProject(
         fun empty(title: String): ComposerProject {
             val now = System.currentTimeMillis()
             return ComposerProject(
-                metadata = ProjectMetadata(
-                    id = UUID.randomUUID().toString(),
-                    title = title.trim().ifBlank { "Untitled" },
-                    artist = "",
-                    album = "",
-                    audioUri = null,
-                    audioName = null,
-                    durationMs = 0L,
-                    createdAtMs = now,
-                    updatedAtMs = now,
-                ),
+                metadata =
+                    ProjectMetadata(
+                        id = UUID.randomUUID().toString(),
+                        title = title.trim().ifBlank { "Untitled" },
+                        artist = "",
+                        album = "",
+                        audioUri = null,
+                        audioName = null,
+                        durationMs = 0L,
+                        createdAtMs = now,
+                        updatedAtMs = now,
+                    ),
                 agents = listOf(ComposerAgent.Default),
                 lines = emptyList(),
                 linkedGroups = emptyList(),
@@ -84,11 +85,12 @@ data class ComposerAgent(
     val colorArgb: Long,
 ) {
     companion object {
-        val Default = ComposerAgent(
-            id = "agent-main",
-            name = "Main",
-            colorArgb = 0xFFBA1A1AL,
-        )
+        val Default =
+            ComposerAgent(
+                id = "agent-main",
+                name = "Main",
+                colorArgb = 0xFFBA1A1AL,
+            )
     }
 }
 
