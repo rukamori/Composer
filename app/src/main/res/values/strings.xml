@@ -14,6 +14,7 @@
     <string name="new_project">New project</string>
     <string name="untitled_project">Untitled</string>
     <string name="create_project">Create project</string>
+    <string name="create_project_body">Add metadata now so the editor, preview, and exports are easier to track.</string>
     <string name="project_title">Project title</string>
     <string name="artist">Artist</string>
     <string name="album">Album</string>
@@ -67,6 +68,9 @@
     <string name="duration">Duration</string>
     <string name="words">Words</string>
     <string name="lines">Lines</string>
+    <string name="project_stats">%1$d lines - %2$d words - %3$s</string>
+    <string name="line_word_stats">%1$d lines - %2$d words</string>
+    <string name="artist_unknown">Unknown artist</string>
     <string name="agents">Agents</string>
     <string name="metadata">Metadata</string>
     <string name="standards">TTML standards</string>
@@ -75,6 +79,10 @@
     <string name="empty_editor_body">Select or create a project before editing lyrics.</string>
     <string name="no_audio">No audio selected</string>
     <string name="selected_word">Selected word</string>
+    <string name="line_detail">Line detail</string>
+    <string name="active_preview">Active lyric</string>
+    <string name="up_next">Up next</string>
+    <string name="no_lyrics">No lyrics imported</string>
     <string name="start_time">Start</string>
     <string name="end_time">End</string>
     <string name="share_failed">Unable to share the export.</string>

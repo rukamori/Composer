@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -23,17 +25,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Article
+import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.IosShare
-import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -80,6 +81,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -93,7 +95,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -101,9 +103,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import moe.rukamori.composerapp.R
 import moe.rukamori.composerapp.domain.model.LyricsFormat
+import moe.rukamori.composerapp.viewmodel.ComposerEffect
 import moe.rukamori.composerapp.viewmodel.ComposerViewModel
 import moe.rukamori.composerapp.viewmodel.EditorScreenState
 import moe.rukamori.composerapp.viewmodel.EditorUiModel
@@ -137,6 +141,16 @@ fun ComposerApp(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val destinations = remember { ComposerDestination.entries }
+
+    LaunchedEffect(viewModel, navController) {
+        viewModel.effects.collectLatest { effect ->
+            if (effect is ComposerEffect.NavigateToEdit) {
+                navController.navigate(ComposerDestination.Edit.route) {
+                    launchSingleTop = true
+                }
+            }
+        }
+    }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val useRail = maxWidth >= 600.dp
@@ -226,11 +240,21 @@ private fun ComposerNavHost(
     ) {
         composable(ComposerDestination.Projects.route) {
             val state by viewModel.projectsState.collectAsStateWithLifecycle()
-            val untitledProject = stringResource(R.string.untitled_project)
             ProjectsScreen(
                 state = state,
-                onCreateProject = { viewModel.createProject(untitledProject) },
+                onShowCreateProject = viewModel::showCreateProjectDialog,
+                onDismissCreateProject = viewModel::dismissCreateProjectDialog,
+                onCreateProjectTitleChange = viewModel::updateCreateProjectTitle,
+                onCreateProjectArtistChange = viewModel::updateCreateProjectArtist,
+                onCreateProjectAlbumChange = viewModel::updateCreateProjectAlbum,
+                onConfirmCreateProject = viewModel::confirmCreateProject,
                 onOpenProject = viewModel::openProject,
+                onEditProject = { id ->
+                    viewModel.openProject(id)
+                    navController.navigate(ComposerDestination.Edit.route) {
+                        launchSingleTop = true
+                    }
+                },
                 onDuplicateProject = viewModel::duplicateActiveProject,
                 onRequestDeleteProject = viewModel::requestDeleteProject,
                 onDismissDelete = viewModel::dismissDeleteProject,
@@ -318,8 +342,14 @@ private fun ComposerNavHost(
 @Composable
 private fun ProjectsScreen(
     state: ProjectsScreenState,
-    onCreateProject: () -> Unit,
+    onShowCreateProject: () -> Unit,
+    onDismissCreateProject: () -> Unit,
+    onCreateProjectTitleChange: (String) -> Unit,
+    onCreateProjectArtistChange: (String) -> Unit,
+    onCreateProjectAlbumChange: (String) -> Unit,
+    onConfirmCreateProject: () -> Unit,
     onOpenProject: (String) -> Unit,
+    onEditProject: (String) -> Unit,
     onDuplicateProject: (String) -> Unit,
     onRequestDeleteProject: (String) -> Unit,
     onDismissDelete: () -> Unit,
@@ -329,7 +359,7 @@ private fun ProjectsScreen(
         titleResId = R.string.projects,
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = onCreateProject,
+                onClick = onShowCreateProject,
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 text = { Text(stringResource(R.string.new_project)) },
             )
@@ -345,7 +375,7 @@ private fun ProjectsScreen(
                     titleResId = R.string.empty_projects_title,
                     bodyResId = R.string.empty_projects_body,
                     actionResId = R.string.create_project,
-                    onAction = onCreateProject,
+                    onAction = onShowCreateProject,
                     modifier = Modifier.padding(padding),
                 )
             }
@@ -357,7 +387,9 @@ private fun ProjectsScreen(
             is ProjectsScreenState.Success -> {
                 ProjectsContent(
                     model = state.model,
+                    onShowCreateProject = onShowCreateProject,
                     onOpenProject = onOpenProject,
+                    onEditProject = onEditProject,
                     onDuplicateProject = onDuplicateProject,
                     onRequestDeleteProject = onRequestDeleteProject,
                     modifier = Modifier.padding(padding),
@@ -382,12 +414,24 @@ private fun ProjectsScreen(
             },
         )
     }
+    if (state is ProjectsScreenState.Success && state.model.isCreateDialogVisible) {
+        CreateProjectDialog(
+            model = state.model,
+            onTitleChange = onCreateProjectTitleChange,
+            onArtistChange = onCreateProjectArtistChange,
+            onAlbumChange = onCreateProjectAlbumChange,
+            onConfirm = onConfirmCreateProject,
+            onDismiss = onDismissCreateProject,
+        )
+    }
 }
 
 @Composable
 private fun ProjectsContent(
     model: ProjectsUiModel,
+    onShowCreateProject: () -> Unit,
     onOpenProject: (String) -> Unit,
+    onEditProject: (String) -> Unit,
     onDuplicateProject: (String) -> Unit,
     onRequestDeleteProject: (String) -> Unit,
     modifier: Modifier,
@@ -397,6 +441,17 @@ private fun ProjectsContent(
         contentPadding = PaddingValues(MdSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(MdSpacing.sm),
     ) {
+        if (model.projects.isEmpty) {
+            item(contentType = "empty") {
+                EmptyState(
+                    titleResId = R.string.empty_projects_title,
+                    bodyResId = R.string.empty_projects_body,
+                    actionResId = R.string.create_project,
+                    onAction = onShowCreateProject,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
         items(
             items = model.projects.asList(),
             key = ProjectSummaryUiModel::id,
@@ -406,6 +461,7 @@ private fun ProjectsContent(
                 project = project,
                 isActive = project.id == model.activeProjectId,
                 onOpen = { onOpenProject(project.id) },
+                onEdit = { onEditProject(project.id) },
                 onDuplicate = { onDuplicateProject(project.id) },
                 onDelete = { onRequestDeleteProject(project.id) },
             )
@@ -418,9 +474,11 @@ private fun ProjectCard(
     project: ProjectSummaryUiModel,
     isActive: Boolean,
     onOpen: () -> Unit,
+    onEdit: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val artistLabel = if (project.artist.isBlank()) stringResource(R.string.artist_unknown) else project.artist
     ElevatedCard(
         colors =
             CardDefaults.elevatedCardColors(
@@ -432,19 +490,25 @@ private fun ProjectCard(
                 Text(project.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
             },
             supportingContent = {
-                Text(
-                    "${project.lineCount} ${stringResource(
-                        R.string.lines,
-                    )} · ${project.wordCount} ${stringResource(R.string.words)} · ${project.durationLabel}",
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(MdSpacing.xs)) {
+                    Text(
+                        artistLabel,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(stringResource(R.string.project_stats, project.lineCount, project.wordCount, project.durationLabel))
+                }
             },
             leadingContent = {
-                Icon(Icons.Default.Article, contentDescription = null)
+                Icon(Icons.AutoMirrored.Filled.Article, contentDescription = null)
             },
             trailingContent = {
                 Row(horizontalArrangement = Arrangement.spacedBy(MdSpacing.xs)) {
                     IconButton(onClick = onOpen) {
-                        Icon(Icons.Default.FileOpen, contentDescription = stringResource(R.string.open))
+                        Icon(Icons.AutoMirrored.Filled.LibraryBooks, contentDescription = stringResource(R.string.open))
+                    }
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit))
                     }
                     IconButton(onClick = onDuplicate) {
                         Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.duplicate))
@@ -456,6 +520,72 @@ private fun ProjectCard(
             },
         )
     }
+}
+
+@Composable
+private fun CreateProjectDialog(
+    model: ProjectsUiModel,
+    onTitleChange: (String) -> Unit,
+    onArtistChange: (String) -> Unit,
+    onAlbumChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.metadata)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(MdSpacing.sm)) {
+                Text(stringResource(R.string.create_project_body))
+                OutlinedTextField(
+                    value = model.titleDraft,
+                    onValueChange = onTitleChange,
+                    label = { Text(stringResource(R.string.project_title)) },
+                    singleLine = true,
+                    keyboardOptions =
+                        KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Words,
+                            imeAction = ImeAction.Next,
+                        ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = model.artistDraft,
+                    onValueChange = onArtistChange,
+                    label = { Text(stringResource(R.string.artist)) },
+                    singleLine = true,
+                    keyboardOptions =
+                        KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Words,
+                            imeAction = ImeAction.Next,
+                        ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = model.albumDraft,
+                    onValueChange = onAlbumChange,
+                    label = { Text(stringResource(R.string.album)) },
+                    singleLine = true,
+                    keyboardOptions =
+                        KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Words,
+                            imeAction = ImeAction.Done,
+                        ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm, enabled = model.titleDraft.isNotBlank()) {
+                Text(stringResource(R.string.create_project))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
 }
 
 @Composable
@@ -651,6 +781,7 @@ private fun EditorScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EditorContent(
     model: EditorUiModel,
@@ -673,7 +804,10 @@ private fun EditorContent(
         }
         item(contentType = "agents") {
             SectionCard(titleResId = R.string.agents) {
-                Row(horizontalArrangement = Arrangement.spacedBy(MdSpacing.xs)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(MdSpacing.xs),
+                    verticalArrangement = Arrangement.spacedBy(MdSpacing.xs),
+                ) {
                     model.agents.asList().forEach { agent ->
                         AssistChip(
                             onClick = {},
@@ -706,6 +840,7 @@ private fun EditorContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LyricLineEditor(
     line: LineUiModel,
@@ -717,18 +852,32 @@ private fun LyricLineEditor(
     onSplitWord: () -> Unit,
     onMergeWord: () -> Unit,
 ) {
-    OutlinedCard {
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(MdSpacing.sm),
             verticalArrangement = Arrangement.spacedBy(MdSpacing.sm),
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.line_detail), style = MaterialTheme.typography.titleSmall)
+                AssistChip(
+                    onClick = {},
+                    label = { Text(line.agentName) },
+                )
+            }
             OutlinedTextField(
                 value = line.text,
                 onValueChange = onLineTextChange,
                 label = { Text(stringResource(R.string.lyrics_text)) },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(MdSpacing.xs)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(MdSpacing.xs),
+                verticalArrangement = Arrangement.spacedBy(MdSpacing.xs),
+            ) {
                 agents.forEach { agent ->
                     FilterChip(
                         selected = line.agentId == agent.id,
@@ -743,7 +892,10 @@ private fun LyricLineEditor(
                 )
             }
             FlowWords(line.words.asList(), onWordSelected)
-            Row(horizontalArrangement = Arrangement.spacedBy(MdSpacing.xs)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(MdSpacing.xs),
+                verticalArrangement = Arrangement.spacedBy(MdSpacing.xs),
+            ) {
                 FilledTonalButton(onClick = onSplitWord) {
                     Text(stringResource(R.string.split_word))
                 }
@@ -755,16 +907,18 @@ private fun LyricLineEditor(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FlowWords(
     words: List<WordUiModel>,
     onWordSelected: (String) -> Unit,
 ) {
-    Row(
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(MdSpacing.xs),
+        verticalArrangement = Arrangement.spacedBy(MdSpacing.xs),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        words.take(6).forEach { word ->
+        words.forEach { word ->
             FilterChip(
                 selected = word.isSelected,
                 onClick = { onWordSelected(word.id) },
@@ -1011,6 +1165,7 @@ private fun PreviewContent(
     onSeek: (Long) -> Unit,
     modifier: Modifier,
 ) {
+    val activeLine = model.activeLine
     Column(
         modifier =
             modifier
@@ -1022,7 +1177,10 @@ private fun PreviewContent(
         MediaControls(model.isPlaying, model.playbackPositionMs, model.durationMs, onPlayPause, onSeek)
         Card(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-            modifier = Modifier.widthIn(max = 720.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 720.dp),
         ) {
             Column(
                 modifier = Modifier.padding(MdSpacing.md),
@@ -1030,15 +1188,45 @@ private fun PreviewContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(model.projectTitle, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(stringResource(R.string.active_preview), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 Text(
-                    text = model.activeLine?.text ?: stringResource(R.string.loading),
+                    text = activeLine?.text ?: stringResource(R.string.no_lyrics),
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
+                if (activeLine != null) {
+                    PreviewWords(
+                        words = activeLine.words.asList(),
+                        activeWordId = model.activeWordId,
+                    )
+                }
                 model.upcomingLine?.let {
+                    Text(stringResource(R.string.up_next), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(it.text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PreviewWords(
+    words: List<WordUiModel>,
+    activeWordId: String?,
+) {
+    val noOp = remember { {} }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(MdSpacing.xs, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(MdSpacing.xs),
+    ) {
+        words.forEach { word ->
+            FilterChip(
+                selected = word.id == activeWordId,
+                onClick = noOp,
+                label = { Text(word.text, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            )
         }
     }
 }
@@ -1247,7 +1435,7 @@ private fun SummaryCard(
                 Text(artist, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
             }
             Text(
-                "$lines ${stringResource(R.string.lines)} · $words ${stringResource(R.string.words)}",
+                stringResource(R.string.line_word_stats, lines, words),
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
         }
@@ -1358,7 +1546,7 @@ private fun EmptyState(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(Icons.Default.LibraryBooks, contentDescription = null)
+        Icon(Icons.AutoMirrored.Filled.LibraryBooks, contentDescription = null)
         Text(stringResource(titleResId), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(bodyResId), style = MaterialTheme.typography.bodyMedium)
         if (actionResId != null && onAction != null) {
@@ -1386,7 +1574,7 @@ private enum class ComposerDestination(
     val titleResId: Int,
     val icon: ImageVector,
 ) {
-    Projects("projects", R.string.projects, Icons.Default.LibraryBooks),
+    Projects("projects", R.string.projects, Icons.AutoMirrored.Filled.LibraryBooks),
     Import("import", R.string.import_title, Icons.Default.UploadFile),
     Edit("edit", R.string.edit, Icons.Default.Edit),
     Sync("sync", R.string.sync, Icons.Default.Timer),

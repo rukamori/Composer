@@ -171,6 +171,10 @@ data class ProjectsUiModel(
     val projects: ProjectSummaryCollection,
     val activeProjectId: String?,
     val pendingDeleteProjectId: String?,
+    val isCreateDialogVisible: Boolean,
+    val titleDraft: String,
+    val artistDraft: String,
+    val albumDraft: String,
 )
 
 @Immutable
@@ -339,6 +343,7 @@ data class PreviewUiModel(
     val isPlaying: Boolean,
     val activeLine: LineUiModel?,
     val upcomingLine: LineUiModel?,
+    val activeWordId: String?,
 )
 
 @Immutable
@@ -365,6 +370,8 @@ sealed interface ComposerEffect {
     data class ShowMessage(
         @StringRes val messageResId: Int,
     ) : ComposerEffect
+
+    data object NavigateToEdit : ComposerEffect
 }
 
 @HiltViewModel
@@ -421,9 +428,11 @@ class ComposerViewModel
         private var selection = TimelineSelection(lineId = null, wordId = null)
         private var settings = SettingsUiModel(snapEnabled = true, useDynamicColor = true)
         private var importDraft = ImportDraft()
+        private var createProjectDraft = ProjectCreateDraft()
         private var playbackPositionMs = 0L
         private var isPlaying = false
         private var pendingDeleteProjectId: String? = null
+        private var isCreateDialogVisible = false
         private var isImporting = false
         private var isExporting = false
         private var lastExportLabel: String? = null
@@ -445,6 +454,74 @@ class ComposerViewModel
         fun dismissDeleteProject() {
             pendingDeleteProjectId = null
             updateProjectsState()
+        }
+
+        fun showCreateProjectDialog() {
+            createProjectDraft =
+                createProjectDraft.copy(
+                    title = importDraft.title.ifBlank { createProjectDraft.title },
+                    artist = importDraft.artist,
+                    album = importDraft.album,
+                )
+            isCreateDialogVisible = true
+            updateProjectsState()
+        }
+
+        fun dismissCreateProjectDialog() {
+            isCreateDialogVisible = false
+            updateProjectsState()
+        }
+
+        fun updateCreateProjectTitle(value: String) {
+            createProjectDraft = createProjectDraft.copy(title = value)
+            updateProjectsState()
+        }
+
+        fun updateCreateProjectArtist(value: String) {
+            createProjectDraft = createProjectDraft.copy(artist = value)
+            updateProjectsState()
+        }
+
+        fun updateCreateProjectAlbum(value: String) {
+            createProjectDraft = createProjectDraft.copy(album = value)
+            updateProjectsState()
+        }
+
+        fun confirmCreateProject() {
+            if (writeJob?.isActive == true) return
+            val draft = createProjectDraft
+            val title = draft.title.trim().ifBlank { "Untitled" }
+            writeJob =
+                viewModelScope.launch(Dispatchers.IO) {
+                    runCatching {
+                        val created = createProjectUseCase(title)
+                        created.copy(
+                            metadata =
+                                created.metadata.copy(
+                                    title = title,
+                                    artist = draft.artist.trim(),
+                                    album = draft.album.trim(),
+                                    updatedAtMs = System.currentTimeMillis(),
+                                ),
+                        )
+                    }.onSuccess { project ->
+                        activeProject = project
+                        undoStack.clear()
+                        redoStack.clear()
+                        selection = TimelineSelection(null, null)
+                        isCreateDialogVisible = false
+                        importDraft =
+                            importDraft.copy(
+                                title = project.metadata.title,
+                                artist = project.metadata.artist,
+                                album = project.metadata.album,
+                            )
+                        saveProject(project)
+                        updatePlayerSource(project)
+                        updateAllStates()
+                        _effects.tryEmit(ComposerEffect.NavigateToEdit)
+                    }.onFailure(::handleFailure)
+                }
         }
 
         fun createProject(title: String) {
@@ -902,7 +979,7 @@ class ComposerViewModel
         private fun updateProjectsState() {
             val summaries = projects.map { it.toSummaryUiModel() }
             _projectsState.value =
-                if (summaries.isEmpty()) {
+                if (summaries.isEmpty() && !isCreateDialogVisible) {
                     ProjectsScreenState.Empty
                 } else {
                     ProjectsScreenState.Success(
@@ -910,6 +987,10 @@ class ComposerViewModel
                             projects = ProjectSummaryCollection.from(summaries),
                             activeProjectId = activeProject?.metadata?.id,
                             pendingDeleteProjectId = pendingDeleteProjectId,
+                            isCreateDialogVisible = isCreateDialogVisible,
+                            titleDraft = createProjectDraft.title,
+                            artistDraft = createProjectDraft.artist,
+                            albumDraft = createProjectDraft.album,
                         ),
                     )
                 }
@@ -1049,22 +1130,53 @@ class ComposerViewModel
             )
 
         private fun ComposerProject.toPreviewUiModel(): PreviewUiModel {
-            val activeIndex =
-                lines.indexOfLast { line ->
-                    val start = line.words.mapNotNull { it.startMs }.minOrNull() ?: Long.MIN_VALUE
-                    val end = line.words.mapNotNull { it.endMs }.maxOrNull() ?: Long.MIN_VALUE
-                    playbackPositionMs in start..end
-                }
+            val activeIndex = previewLineIndex()
+            val activeLine = lines.getOrNull(activeIndex)
             return PreviewUiModel(
                 projectTitle = metadata.title,
                 artist = metadata.artist,
                 playbackPositionMs = playbackPositionMs,
                 durationMs = metadata.durationMs,
                 isPlaying = isPlaying,
-                activeLine = lines.getOrNull(activeIndex)?.toLineUiModel(agents),
+                activeLine = activeLine?.toLineUiModel(agents),
                 upcomingLine = lines.getOrNull(activeIndex + 1)?.toLineUiModel(agents),
+                activeWordId = activeLine?.activePreviewWordId(),
             )
         }
+
+        private fun ComposerProject.previewLineIndex(): Int {
+            if (lines.isEmpty()) return -1
+            val containing =
+                lines.indexOfFirst { line ->
+                    line.previewRange()?.let { playbackPositionMs in it } == true
+                }
+            if (containing >= 0) return containing
+
+            val timedRanges = lines.mapIndexedNotNull { index, line -> line.previewRange()?.let { index to it } }
+            val previous = timedRanges.lastOrNull { (_, range) -> playbackPositionMs >= range.first }?.first
+            if (previous != null) return previous
+
+            val selected = lines.indexOfFirst { it.id == selection.lineId }
+            if (selected >= 0) return selected
+
+            return timedRanges.firstOrNull()?.first ?: 0
+        }
+
+        private fun ComposerLine.previewRange(): LongRange? {
+            val start = words.mapNotNull { it.startMs }.minOrNull() ?: return null
+            val end = words.mapNotNull { it.endMs }.maxOrNull() ?: return null
+            return start..max(start, end)
+        }
+
+        private fun ComposerLine.activePreviewWordId(): String? =
+            words.firstOrNull { word ->
+                val start = word.startMs
+                val end = word.endMs
+                start != null && end != null && playbackPositionMs in start..max(start, end)
+            }?.id ?: words.lastOrNull { word ->
+                val start = word.startMs
+                start != null && playbackPositionMs >= start
+            }?.id ?: words.firstOrNull()?.id
 
         private fun ComposerProject.toLineUiCollection(): LineUiCollection = LineUiCollection.from(lines.map { it.toLineUiModel(agents) })
 
@@ -1119,6 +1231,12 @@ class ComposerViewModel
             val album: String = "",
             val format: LyricsFormat = LyricsFormat.PLAIN_TEXT,
             val lyricsText: String = "",
+        )
+
+        private data class ProjectCreateDraft(
+            val title: String = "Untitled",
+            val artist: String = "",
+            val album: String = "",
         )
 
         private companion object {

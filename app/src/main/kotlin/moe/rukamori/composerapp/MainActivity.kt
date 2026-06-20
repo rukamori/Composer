@@ -5,7 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.content.FileProvider
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.collectLatest
@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
                     when (effect) {
                         is ComposerEffect.ShareFile -> shareFile(effect)
                         is ComposerEffect.ShowMessage -> Unit
+                        ComposerEffect.NavigateToEdit -> Unit
                     }
                 }
             }

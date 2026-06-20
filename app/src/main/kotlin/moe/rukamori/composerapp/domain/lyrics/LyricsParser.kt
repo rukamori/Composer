@@ -6,6 +6,9 @@ import moe.rukamori.composerapp.domain.model.ComposerProject
 import moe.rukamori.composerapp.domain.model.ComposerWord
 import moe.rukamori.composerapp.domain.model.LyricsFormat
 import moe.rukamori.composerapp.domain.model.ProjectMetadata
+import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
+import java.io.StringReader
 import java.util.UUID
 import javax.inject.Inject
 import kotlin.math.max
@@ -114,48 +117,79 @@ class LyricsParser
         }
 
         private fun parseTtml(text: String): List<ComposerLine> {
-            val paragraphRegex = Regex("""<p\b([^>]*)>(.*?)</p>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-            val spanRegex = Regex("""<span\b([^>]*)>(.*?)</span>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-            return paragraphRegex
-                .findAll(text)
-                .mapNotNull { paragraph ->
-                    val attributes = paragraph.groupValues[1]
-                    val body = paragraph.groupValues[2]
-                    val start = attributeTime(attributes, "begin")
-                    val end = attributeTime(attributes, "end")
-                    val words =
-                        spanRegex
-                            .findAll(body)
-                            .map { span ->
-                                val spanAttributes = span.groupValues[1]
-                                val wordText =
-                                    span.groupValues[2]
-                                        .stripTags()
-                                        .decodeXml()
-                                        .trim()
-                                ComposerWord(
-                                    id = UUID.randomUUID().toString(),
-                                    text = wordText,
-                                    startMs = attributeTime(spanAttributes, "begin") ?: start,
-                                    endMs = attributeTime(spanAttributes, "end") ?: end,
-                                    syllables = emptyList(),
-                                )
-                            }.filter { it.text.isNotBlank() }
-                            .toList()
-                    val lineText = if (words.isNotEmpty()) words.joinToString(" ") { it.text } else body.stripTags().decodeXml().trim()
-                    if (lineText.isBlank()) {
-                        null
-                    } else {
-                        ComposerLine(
-                            id = UUID.randomUUID().toString(),
-                            text = lineText,
-                            agentId = ComposerAgent.Default.id,
-                            isBackground = attributes.contains("x-bg", ignoreCase = true),
-                            linkedGroupId = null,
-                            words = words.ifEmpty { lineText.toWords(start, end) },
-                        )
+            val parser =
+                XmlPullParserFactory
+                    .newInstance()
+                    .apply { isNamespaceAware = true }
+                    .newPullParser()
+                    .apply { setInput(StringReader(text)) }
+            val lines = mutableListOf<ComposerLine>()
+            var paragraph: TtmlParagraph? = null
+            var span: TtmlSpan? = null
+            var event = parser.eventType
+            while (event != XmlPullParser.END_DOCUMENT) {
+                when (event) {
+                    XmlPullParser.START_TAG -> {
+                        when (parser.name.localName()) {
+                            "p" -> {
+                                val start = parser.attributeTime("begin")
+                                val end = parser.attributeTime("end") ?: parser.attributeTime("dur")?.let { duration -> start?.plus(duration) }
+                                paragraph =
+                                    TtmlParagraph(
+                                        startMs = start,
+                                        endMs = end,
+                                        agentId = parser.attributeValue("agent") ?: ComposerAgent.Default.id,
+                                        isBackground = parser.isBackgroundRole(),
+                                    )
+                            }
+
+                            "span" -> {
+                                paragraph?.let {
+                                    span =
+                                        TtmlSpan(
+                                            startMs = parser.attributeTime("begin") ?: it.startMs,
+                                            endMs = parser.attributeTime("end") ?: parser.attributeTime("dur")?.let { duration ->
+                                                (parser.attributeTime("begin") ?: it.startMs)?.plus(duration)
+                                            } ?: it.endMs,
+                                        )
+                                }
+                            }
+                        }
                     }
-                }.toList()
+
+                    XmlPullParser.TEXT -> {
+                        val value = parser.text.orEmpty()
+                        span?.text?.append(value)
+                        if (span == null) paragraph?.text?.append(value)
+                    }
+
+                    XmlPullParser.END_TAG -> {
+                        when (parser.name.localName()) {
+                            "span" -> {
+                                val currentSpan = span
+                                val currentParagraph = paragraph
+                                if (currentSpan != null && currentParagraph != null) {
+                                    val spanText = currentSpan.text.toString().trim()
+                                    if (spanText.isNotBlank()) {
+                                        currentParagraph.words += spanText.toWords(currentSpan.startMs, currentSpan.endMs)
+                                        if (currentParagraph.text.isNotEmpty()) currentParagraph.text.append(' ')
+                                        currentParagraph.text.append(spanText)
+                                    }
+                                }
+                                span = null
+                            }
+
+                            "p" -> {
+                                paragraph?.toComposerLine()?.let(lines::add)
+                                paragraph = null
+                                span = null
+                            }
+                        }
+                    }
+                }
+                event = parser.next()
+            }
+            return lines
         }
 
         private fun String.toComposerLine(
@@ -213,19 +247,52 @@ class LyricsParser
             return (((hours * 60L + minutes) * 60L) + seconds) * 1_000L + millis
         }
 
-        private fun attributeTime(
-            attributes: String,
-            name: String,
-        ): Long? {
-            val value =
-                Regex("""\b$name\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE).find(attributes)?.groupValues?.get(1) ?: return null
-            return parseClockTime(value)
+        private fun XmlPullParser.attributeTime(name: String): Long? = attributeValue(name)?.let(::parseClockTime)
+
+        private fun XmlPullParser.attributeValue(name: String): String? =
+            (0 until attributeCount)
+                .firstNotNullOfOrNull { index ->
+                    val attributeName = getAttributeName(index).localName()
+                    getAttributeValue(index).takeIf { attributeName.equals(name, ignoreCase = true) && it.isNotBlank() }
+                }
+
+        private fun XmlPullParser.isBackgroundRole(): Boolean {
+            val role = attributeValue("role").orEmpty()
+            val type = attributeValue("type").orEmpty()
+            return role.contains("background", ignoreCase = true) ||
+                role.contains("x-bg", ignoreCase = true) ||
+                type.contains("background", ignoreCase = true) ||
+                type.contains("x-bg", ignoreCase = true)
+        }
+
+        private fun TtmlParagraph.toComposerLine(): ComposerLine? {
+            val lineText = text.toString().trim()
+            if (lineText.isBlank()) return null
+            return ComposerLine(
+                id = UUID.randomUUID().toString(),
+                text = lineText,
+                agentId = agentId,
+                isBackground = isBackground,
+                linkedGroupId = null,
+                words = words.ifEmpty { lineText.toWords(startMs, endMs) },
+            )
         }
 
         private fun parseClockTime(value: String): Long? {
             if (value.endsWith("ms")) return value.removeSuffix("ms").toLongOrNull()
             if (value.endsWith("s")) return (value.removeSuffix("s").toDoubleOrNull()?.times(1_000.0))?.toLong()
-            val match = Regex("""(\d{1,2}):(\d{2}):(\d{2})(?:[,.](\d{1,3}))?""").find(value) ?: return null
+            val match = Regex("""(\d{1,2}):(\d{2}):(\d{2})(?:[,.](\d{1,3}))?""").find(value)
+            if (match == null) {
+                val minuteMatch = Regex("""(\d{1,2}):(\d{2})(?:[,.](\d{1,3}))?""").find(value) ?: return null
+                val minutes = minuteMatch.groupValues[1].toLong()
+                val seconds = minuteMatch.groupValues[2].toLong()
+                val millis =
+                    minuteMatch.groupValues[3]
+                        .padEnd(3, '0')
+                        .take(3)
+                        .toLongOrNull() ?: 0L
+                return ((minutes * 60L) + seconds) * 1_000L + millis
+            }
             val hours = match.groupValues[1].toLong()
             val minutes = match.groupValues[2].toLong()
             val seconds = match.groupValues[3].toLong()
@@ -237,14 +304,22 @@ class LyricsParser
             return (((hours * 60L + minutes) * 60L) + seconds) * 1_000L + millis
         }
 
-        private fun String.stripTags(): String = replace(Regex("""<[^>]+>"""), " ")
+        private fun String.localName(): String = substringAfter(':')
 
-        private fun String.decodeXml(): String =
-            replace("&amp;", "&")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&quot;", "\"")
-                .replace("&apos;", "'")
+        private data class TtmlParagraph(
+            val startMs: Long?,
+            val endMs: Long?,
+            val agentId: String,
+            val isBackground: Boolean,
+            val text: StringBuilder = StringBuilder(),
+            val words: MutableList<ComposerWord> = mutableListOf(),
+        )
+
+        private data class TtmlSpan(
+            val startMs: Long?,
+            val endMs: Long?,
+            val text: StringBuilder = StringBuilder(),
+        )
 
         private fun formatTime(timeMs: Long): String {
             val seconds = timeMs / 1_000L
